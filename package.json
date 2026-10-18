@@ -15,7 +15,8 @@
   "files": [
     "*.mjs",
     "LICENSE",
-    "README.md"
+    "README.md",
+    "licenses"
   ],
   "scripts": {
     "test": "node --test test/*.test.mjs",
