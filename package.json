@@ -1,6 +1,6 @@
 {
   "name": "@orbitverse/bookorbit-plugin-tools",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Shared build and signed release tooling for BookOrbit plugins",
   "type": "module",
@@ -15,7 +15,8 @@
   "files": [
     "*.mjs",
     "LICENSE",
-    "README.md"
+    "README.md",
+    "licenses"
   ],
   "scripts": {
     "test": "node --test test/*.test.mjs",

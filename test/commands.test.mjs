@@ -30,13 +30,59 @@ test("commands build, inspect, sign without execution and reconcile published by
       join(root, "package.json"),
       JSON.stringify({ version: "1.0.0", type: "module" }),
     );
+    await writeFile(join(root, "LICENSE"), "Fixture project license");
+    await writeFile(join(root, "NOTICE"), "Copyright Fixture Maintainer");
+    for (const name of [
+      "fixture-dep",
+      "fixture-transitive",
+      "unused-dep",
+      "boolbase",
+    ]) {
+      const dir = join(root, "node_modules", name);
+      await mkdir(dir, { recursive: true });
+      await writeFile(
+        join(dir, "package.json"),
+        JSON.stringify({
+          name,
+          version: "1.0.0",
+          type: "module",
+          main: "index.js",
+        }),
+      );
+      await writeFile(
+        join(dir, "LICENSE"),
+        `Copyright ${name}\nPermission is hereby granted, free of charge.`,
+      );
+      await writeFile(
+        join(dir, "index.js"),
+        name === "fixture-dep"
+          ? 'export { marker } from "fixture-transitive";'
+          : 'export const marker = "fixture runtime";',
+      );
+    }
+    await rm(join(root, "node_modules/boolbase/LICENSE"));
     await writeFile(join(root, "release.json"), JSON.stringify(config));
     const manifestUrl =
       "https://github.com/owner/repo/releases/latest/download/test-plugin.json";
-    const source = `export default {apiVersion:1,type:"test-plugin",version:"1.0.0",update:${JSON.stringify({ manifestUrl, ed25519PublicKey: config.publicKey })},search(){},test(){},resolveFile(){}};`;
+    const source = `import { marker } from "fixture-dep"; import { marker as bool } from "boolbase"; export default {marker,bool,apiVersion:1,type:"test-plugin",version:"1.0.0",update:${JSON.stringify({ manifestUrl, ed25519PublicKey: config.publicKey })},search(){},test(){},resolveFile(){}};`;
     await writeFile(join(root, "src/index.ts"), source);
     await run("build");
     const checked = await readFile(join(root, "dist/index.mjs"));
+    const text = checked.toString();
+    assert(text.includes("Copyright Fixture Maintainer"));
+    assert(text.includes("Fixture project license"));
+    assert(text.includes("Copyright fixture-dep"));
+    assert(text.includes("Copyright fixture-transitive"));
+    assert(text.includes("Copyright (c) 2014-2015, Felix Boehm"));
+    assert(!text.includes("Copyright unused-dep"));
+    assert(text.includes("https://github.com/owner/repo/tree/v1.0.0"));
+    // A missing license must fail rather than silently create an incomplete distribution.
+    await rm(join(root, "node_modules/fixture-dep/LICENSE"));
+    await assert.rejects(run("build"), /Missing license/);
+    await writeFile(
+      join(root, "node_modules/fixture-dep/LICENSE"),
+      "Copyright fixture-dep",
+    );
     // The signer must never execute the checked plugin, even with a key in its environment.
     await writeFile(
       join(root, "dist/index.mjs"),
@@ -95,7 +141,7 @@ test("CLI help/version work without a plugin repo; unknown commands fail", async
   );
   assert.match(
     (await exec(process.execPath, [cli, "--version"])).stdout,
-    /^0.1.0\n$/,
+    /^0.1.1\n$/,
   );
   await assert.rejects(
     exec(process.execPath, [cli, "publish"]),

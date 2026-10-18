@@ -1,11 +1,11 @@
 import { build } from "esbuild";
 import assert from "node:assert/strict";
-import { readFile, writeFile } from "node:fs/promises";
+import { appendFile, readFile, readdir, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { resolve } from "node:path";
 
-await build({
+const result = await build({
   entryPoints: ["src/index.ts"],
   outfile: "dist/index.mjs",
   bundle: true,
@@ -14,8 +14,47 @@ await build({
   target: "node22",
   minify: true,
   legalComments: "eof",
-  metafile: false,
+  metafile: true,
 });
+const packageInfo = JSON.parse(await readFile("package.json", "utf8"));
+const config = JSON.parse(await readFile("release.json", "utf8"));
+const roots = new Set(["."]);
+for (const input of Object.keys(result.metafile.inputs)) {
+  const root = input.match(/^(.*node_modules\/(?:@[^/]+\/)?[^/]+)\//)?.[1];
+  if (root) roots.add(root);
+}
+const notices = [
+  `Corresponding source and build instructions: https://github.com/${config.repository}/tree/v${packageInfo.version}`,
+];
+for (const root of [...roots].sort()) {
+  const metadata = JSON.parse(
+    await readFile(resolve(root, "package.json"), "utf8"),
+  );
+  const names = (await readdir(root))
+    .filter((name) => /^(?:licen[cs]e|notice)(?:[.-].*)?$/i.test(name))
+    .sort();
+  // boolbase's npm archive omits its upstream ISC license.
+  const supplemental =
+    metadata.name === "boolbase" && metadata.version === "1.0.0"
+      ? await readFile(
+          new URL("./licenses/boolbase@1.0.0.txt", import.meta.url),
+          "utf8",
+        )
+      : undefined;
+  assert(
+    names.some((name) => /^licen[cs]e/i.test(name)) || supplemental,
+    `Missing license: ${root}`,
+  );
+  notices.push(`${metadata.name ?? config.type} ${metadata.version}`);
+  if (supplemental) notices.push(supplemental);
+  for (const name of names)
+    notices.push(await readFile(resolve(root, name), "utf8"));
+}
+// Keep licenses shipped as separate files inside every standalone download, too.
+await appendFile(
+  "dist/index.mjs",
+  `\n/*\n${notices.join("\n\n").replaceAll("*/", "* /")}\n*/\n`,
+);
 const bytes = (await readFile("dist/index.mjs")).byteLength;
 assert(
   bytes <= 512 * 1024,
@@ -44,7 +83,6 @@ assert(
   plugin.hasSearch && plugin.hasTest && plugin.hasResolveFile,
   "Bundle must expose BookOrbit's search, test and resolveFile methods",
 );
-const packageInfo = JSON.parse(await readFile("package.json", "utf8"));
 assert.equal(plugin.version, packageInfo.version);
 assert.match(plugin.update.ed25519PublicKey, /^[A-Za-z0-9_-]{43}$/);
 assert.equal(new URL(plugin.update.manifestUrl).protocol, "https:");
