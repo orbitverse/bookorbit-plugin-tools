@@ -33,11 +33,20 @@ for (const root of [...roots].sort()) {
   const names = (await readdir(root))
     .filter((name) => /^(?:licen[cs]e|notice)(?:[.-].*)?$/i.test(name))
     .sort();
+  // boolbase's npm archive omits its upstream ISC license.
+  const supplemental =
+    metadata.name === "boolbase" && metadata.version === "1.0.0"
+      ? await readFile(
+          new URL("./licenses/boolbase@1.0.0.txt", import.meta.url),
+          "utf8",
+        )
+      : undefined;
   assert(
-    names.some((name) => /^licen[cs]e/i.test(name)),
+    names.some((name) => /^licen[cs]e/i.test(name)) || supplemental,
     `Missing license: ${root}`,
   );
   notices.push(`${metadata.name ?? config.type} ${metadata.version}`);
+  if (supplemental) notices.push(supplemental);
   for (const name of names)
     notices.push(await readFile(resolve(root, name), "utf8"));
 }

@@ -32,7 +32,12 @@ test("commands build, inspect, sign without execution and reconcile published by
     );
     await writeFile(join(root, "LICENSE"), "Fixture project license");
     await writeFile(join(root, "NOTICE"), "Copyright Fixture Maintainer");
-    for (const name of ["fixture-dep", "fixture-transitive", "unused-dep"]) {
+    for (const name of [
+      "fixture-dep",
+      "fixture-transitive",
+      "unused-dep",
+      "boolbase",
+    ]) {
       const dir = join(root, "node_modules", name);
       await mkdir(dir, { recursive: true });
       await writeFile(
@@ -55,10 +60,11 @@ test("commands build, inspect, sign without execution and reconcile published by
           : 'export const marker = "fixture runtime";',
       );
     }
+    await rm(join(root, "node_modules/boolbase/LICENSE"));
     await writeFile(join(root, "release.json"), JSON.stringify(config));
     const manifestUrl =
       "https://github.com/owner/repo/releases/latest/download/test-plugin.json";
-    const source = `import { marker } from "fixture-dep"; export default {marker,apiVersion:1,type:"test-plugin",version:"1.0.0",update:${JSON.stringify({ manifestUrl, ed25519PublicKey: config.publicKey })},search(){},test(){},resolveFile(){}};`;
+    const source = `import { marker } from "fixture-dep"; import { marker as bool } from "boolbase"; export default {marker,bool,apiVersion:1,type:"test-plugin",version:"1.0.0",update:${JSON.stringify({ manifestUrl, ed25519PublicKey: config.publicKey })},search(){},test(){},resolveFile(){}};`;
     await writeFile(join(root, "src/index.ts"), source);
     await run("build");
     const checked = await readFile(join(root, "dist/index.mjs"));
@@ -67,6 +73,7 @@ test("commands build, inspect, sign without execution and reconcile published by
     assert(text.includes("Fixture project license"));
     assert(text.includes("Copyright fixture-dep"));
     assert(text.includes("Copyright fixture-transitive"));
+    assert(text.includes("Copyright (c) 2014-2015, Felix Boehm"));
     assert(!text.includes("Copyright unused-dep"));
     assert(text.includes("https://github.com/owner/repo/tree/v1.0.0"));
     // A missing license must fail rather than silently create an incomplete distribution.
